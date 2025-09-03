@@ -1,6 +1,5 @@
-# Robust DeepFake Audio Detection (SSL Features + NeXt-TDNN)
-
-A strong audio deepfake (spoof) detection pipeline that fuses **self-supervised speech representations** (HuBERT-Large + WavLM-Large) and classifies them with an **improved NeXt-TDNN** backbone enhanced by **Efficient Channel Attention (ECA)**.  
+# Robust DeepFake Audio Detection via an Improved NeXt-TDNN with Multi-Fused Self-Supervised Learning Features
+A robust audio deepfake (spoof) detection pipeline that fuses **self-supervised speech representations** (HuBERT-Large + WavLM-Large) and classifies them with an **improved NeXt-TDNN** backbone enhanced by **Efficient Channel Attention (ECA)**.  
 The repo includes scripts for **feature extraction, training, and evaluation** on **ASVspoof 2019 (LA/PA)** and **ASVspoof-5 Track-1**.
 
 ---
