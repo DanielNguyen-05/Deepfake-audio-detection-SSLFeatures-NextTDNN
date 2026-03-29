@@ -1,0 +1,29 @@
+python make_protocol.py
+
+mv RADAR2026-dev/protocol.txt RADAR2026-dev/ASVspoof5.eval.track_1.tsv
+
+(bundle_name="HUBERT_LARGE",)
+
+python extractFeatures_ASV5.py \
+  --part eval \
+  --protocol_dir "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev" \
+  --audio_root "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev" \
+  --output_dir "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/HUBERT_LARGE_L8" \
+  --layer 8 \
+  --device mps
+
+
+
+(bundle_name="WAVLM_LARGE",)
+
+
+python extractFeatures_ASV5.py \
+  --part eval \
+  --protocol_dir "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev" \
+  --audio_root "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev" \
+  --output_dir "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/WAVLM_LARGE_L8" \
+  --layer 8 \
+  --device mps
+
+
+python test_asv5.py

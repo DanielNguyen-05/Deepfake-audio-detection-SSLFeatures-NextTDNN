@@ -59,7 +59,7 @@ def extract_partition(
     audio_map = {
         # "train": "flac_T",
         # "dev": "flac_D",
-        "eval": "flac_E_eval",
+        "eval": "flac",
     }
     if part not in proto_map:
         raise ValueError(f"Unknown part '{part}'. Choose from {list(proto_map)}")
@@ -107,7 +107,7 @@ def extract_partition(
     # ---------------------------------------------------------------------
     with proto_fp.open("r", encoding="utf8") as f:
         # Column‑2 = FLAC_FILE_NAME
-        utt_ids: List[str] = [ln.split()[1] for ln in f]
+        utt_ids: List[str] = [ln.split()[0] for ln in f]
 
     for utt_id in tqdm(utt_ids, desc=part, ncols=80):
         out_fp = out_dir / f"{utt_id}.pt"
@@ -162,7 +162,8 @@ def _cli():
         protocol_dir=args.protocol_dir,
         audio_root=args.audio_root,
         output_dir=args.output_dir,
-        bundle_name=args.bundle,
+        # bundle_name="HUBERT_LARGE",
+        bundle_name="WAVLM_LARGE",
         layer=args.layer,
         downsample=args.downsample,
         device=args.device,
@@ -178,13 +179,13 @@ if __name__ == "__main__":
         _cli()
     else:
         PARAMS_COMMON = {
-            "protocol_dir": "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5/ASVspoof5_protocols",
-            "audio_root": "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5",
-            "output_dir": "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5/features/WAVLM_LARGE_L8",
-            "bundle_name": "WAVLM_LARGE",
+            "protocol_dir": "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev",
+            "audio_root": "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev",
+            "output_dir": "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/HUBERT_LARGE_L8",
+            "bundle_name": "HUBERT_LARGE", 
             "layer": 8,
             "downsample": None,
-            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "device": "mps" if torch.backends.mps.is_available() else "cpu",
         }
         for _part in ["eval"]:
             print(f"\n>>> Processing {_part}…")

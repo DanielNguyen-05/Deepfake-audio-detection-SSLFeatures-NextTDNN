@@ -1,46 +1,37 @@
-
 from __future__ import annotations
 import logging
 import warnings
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-# ----------------------------------------------------------------------
-# CONFIG
-# ----------------------------------------------------------------------
+# ========================== CONFIG ==========================
 PATH_TO_FEATURES = (
-   
-    "F:/HUBERT_LARGE_L8,"
-    "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5/features/WAVLM_LARGE_L8"
+    "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/HUBERT_LARGE_L8,"
+    "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/WAVLM_LARGE_L8"
 )
-EVAL_PROTOCOL_FILE = (
-    "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5/ASVspoof5_protocols/ASVspoof5.eval.track_1.tsv"
-)
-OUT_FOLD = "./models/asv5_amf_hubert_wavlm_nextdnn_eca_L8"   # eğitimde kullandığın out_fold
+
+EVAL_PROTOCOL_FILE = "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/ASVspoof5.eval.track_1.tsv"
+OUT_FOLD = "/Users/dangnguyen/Desktop/RADAR26/Deepfake-audio-detection-SSLFeatures-NextTDNN/models/amf_hubert_wavlm_nextdnn_eca_L8_Light_ASVSpoof5"
+
 FEAT_LEN = 750
-PADDING = "repeat"           # "zero" | "repeat"
+PADDING = "repeat"
 BATCH_SIZE = 32
 NUM_WORKERS = 0
-ADD_LOSS = "ocsoftmax"       # "softmax" | "amsoftmax" | "ocsoftmax"
-DEVICE = "cuda"              # GPU yoksa CPU'ya düşer
+DEVICE = "cpu"
+ADD_LOSS = "ocsoftmax"
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(format="[%(levelname)s] %(message)s", level=logging.INFO)
 
+from train_asv5 import ASVspoof5Track1FeatureDataset, AMF_ECAPA_Model, forward_emb_logits
 
-from train_asv5 import (
-    ASVspoof5Track1FeatureDataset,
-    AMF_ECAPA_Model,
-    forward_emb_logits,  # (emb, logits) döndürür
-)
 
-from loss import OCSoftmax, AMSoftmax  # noqa: F401
+from loss import OCSoftmax, AMSoftmax 
 
 
 # ----------------------------------------------------------------------
@@ -125,7 +116,7 @@ def evaluate(model: torch.nn.Module, aux_loss_fn: Optional[torch.nn.Module] = No
 
     eer = None
     try:
-        import eval_metrics as em  # eğitimde kullanılan EER fonksiyonu
+        import eval_metrics as em 
         all_scores, all_labels = [], []
         with score_fp.open("r", encoding="utf-8") as fp:
             for line in fp:

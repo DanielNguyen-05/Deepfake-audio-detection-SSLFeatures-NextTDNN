@@ -1,0 +1,16 @@
+.venv/
+.venv
+/venv
+venv/
+venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.csv
+*.h5
+*.ckpt
+.DS_Store
+Thumbs.db
+RADAR2026*

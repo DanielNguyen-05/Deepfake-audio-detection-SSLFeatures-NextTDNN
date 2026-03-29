@@ -309,7 +309,7 @@ class AMF_ECAPA_Model(nn.Module):
         if x.ndim == 3:
             x = self.pool(x).squeeze(-1)       # (B,C')
         emb = F.normalize(self.relu(self.fc1(x)), dim=1)
-        logits = self.fc2(emb)
+        logits = self.fc2(emb)     
         return emb, logits
 
 
@@ -371,15 +371,6 @@ def train(args) -> None:
     opt_model = torch.optim.Adam(model.parameters(), lr=args.lr)
     ce = nn.CrossEntropyLoss()
 
-    aux: Optional[nn.Module] = None
-    opt_aux = None
-    if args.add_loss == "amsoftmax":
-        aux = AMSoftmax(2, args.emb_dim, s=args.alpha, m=args.r_real).to(args.device)
-        opt_aux = torch.optim.SGD(aux.parameters(), lr=0.01)
-    elif args.add_loss == "ocsoftmax":
-        aux = OCSoftmax(args.emb_dim, r_real=args.r_real, r_fake=args.r_fake, alpha=args.alpha).to(args.device)
-        opt_aux = torch.optim.SGD(aux.parameters(), lr=args.lr)
-
     best_eer, early = float("inf"), 0
     ckpt_dir = args.out_fold / "checkpoint"
 
@@ -387,25 +378,15 @@ def train(args) -> None:
         # -------------------- TRAIN --------------------
         model.train()
         adjust_lr(opt_model, args.lr, args.lr_decay, args.interval, ep)
-        if opt_aux:
-            adjust_lr(opt_aux, args.lr, args.lr_decay, args.interval, ep)
 
         for f1, f2, _, y in tqdm(train_loader, desc=f"Train {ep+1}"):
             f1, f2, y = f1.to(args.device), f2.to(args.device), y.to(args.device)
-            opt_model.zero_grad();  opt_aux and opt_aux.zero_grad()
+            opt_model.zero_grad()
 
             emb, logits = model(f1, f2)
             loss = ce(logits, y)
-            if aux:
-                if args.add_loss == "ocsoftmax":
-                    l, logits = aux(emb, y)
-                    loss = l * args.weight_loss
-                else:  # amsoftmax
-                    o, m = aux(emb, y)
-                    loss = ce(m, y) * args.weight_loss
-                    logits = o
             loss.backward()
-            opt_model.step();  opt_aux and opt_aux.step()
+            opt_model.step()
 
         # -------------------- VALID --------------------
         model.eval();  scores, labs = [], []
@@ -413,31 +394,39 @@ def train(args) -> None:
             for f1, f2, _, y in tqdm(dev_loader, desc="Dev"):
                 f1, f2, y = f1.to(args.device), f2.to(args.device), y.to(args.device)
                 emb, logits = model(f1, f2)
-                if aux:
-                    if args.add_loss == "ocsoftmax":
-                        _, logits = aux(emb, y)
-                    else:
-                        logits, _ = aux(emb, y)
-                prob = (F.softmax(logits, dim=1)[:, 0] if logits.dim() > 1 else logits)
-                scores.append(prob.detach().cpu().numpy());  labs.append(y.detach().cpu().numpy())
-        scores = np.concatenate(scores);  labs = np.concatenate(labs)
-        eer = em.compute_eer(scores[labs == 0], scores[labs == 1])[0]
+                
+                # prob = (F.softmax(logits, dim=1)[:, 0] if logits.dim() > 1 else logits)
+                # scores.append(prob.detach().cpu().numpy());  labs.append(y.detach().cpu().numpy())
+
+                # Dùng raw fake logit (cao = spoof) để tính EER
+                fake_scores = logits[:, 1].cpu().numpy()
+                scores.append(fake_scores)
+                labs.append(y.cpu().numpy())
+
+        scores = np.concatenate(scores)
+        labs = np.concatenate(labs)
+        
+        # EER với fake logit (flip sign để bona có score cao hơn)
+        bona  = -scores[labs == 0]
+        spoof = -scores[labs == 1]
+        eer = em.compute_eer(bona, spoof)[0]
 
         # log & checkpoints
-        with (args.out_fold / "eer.log").open("a", encoding="utf-8") as fp:
-            fp.write(f"{ep+1}\t{eer:.6f}\n")
         print(f"Epoch {ep+1}: EER = {eer:.4f}")
 
-        save_checkpoint(model, aux, ckpt_dir / f"epoch_{ep+1}.pt")
+        with (args.out_fold / "eer.log").open("a", encoding="utf-8") as fp:
+            fp.write(f"{ep+1}\t{eer:.6f}\n")
+
+        save_checkpoint(model, ckpt_dir / f"epoch_{ep+1}.pt")
+
         if eer < best_eer:
             best_eer, early = eer, 0
-            save_checkpoint(model, aux, args.out_fold / "anti-spoofing_model.pt")
-            if aux:
-                torch.save(aux.state_dict(), args.out_fold / "anti-spoofing_loss_model.pt")
+            save_checkpoint(model, args.out_fold / "anti-spoofing_model.pt")
         else:
             early += 1
         if early >= args.patience:
-            print(f"Early stop — {args.patience} epoch iyileşme yok");  break
+            print(f"Early stop sau {args.patience} epoch")
+            break
 
 
 # =============================================================================
@@ -445,20 +434,13 @@ def train(args) -> None:
 # =============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("ECAPA-NeXtTDNN + AMF (HuBERT & WavLM) trainer for ASVspoof5 Track-1")
-
-    # Zorunlu yollar
-    parser.add_argument("--path_to_features", required=True,
-                        help="HuBERT ve WavLM kökleri, virgülle ayrılmış. Örn: /feat/HuBERT_L8,/feat/WavLM_L8")
-    parser.add_argument("--proto_train", required=True, help="ASVspoof5 Track-1 train protokol dosyası")
-    parser.add_argument("--proto_dev", required=True, help="ASVspoof5 Track-1 dev protokol dosyası")
-    parser.add_argument("--proto_eval", default="", help="(Opsiyonel) eval protokol dosyası")
-    parser.add_argument("--out_fold", required=True, help="Çıkış klasörü")
-
-    # Veri/özellik
+    parser.add_argument("--path_to_features", required=True)
+    parser.add_argument("--proto_train", required=True)
+    parser.add_argument("--proto_dev", required=True)
+    parser.add_argument("--proto_eval")
+    parser.add_argument("--out_fold", required=True)
     parser.add_argument("--feat_len", type=int, default=750)
     parser.add_argument("--padding", choices=["zero", "repeat"], default="repeat")
-
-    # Model/opt
     parser.add_argument("--emb_dim", type=int, default=256)
     parser.add_argument("--num_epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=32)
@@ -468,34 +450,18 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=598)
-    parser.add_argument("--patience", type=int, default=100,
-                        help="İyileşme yoksa erken durdurma eşiği (epoch)")
-
-    # Ek kayıp
-    parser.add_argument("--add_loss", choices=["softmax", "amsoftmax", "ocsoftmax"], default="ocsoftmax")
-    parser.add_argument("--weight_loss", type=float, default=1.0)
-    parser.add_argument("--r_real", type=float, default=0.9)
-    parser.add_argument("--r_fake", type=float, default=0.2)
-    parser.add_argument("--alpha", type=float, default=20.0)
-
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--continue_training", action="store_true")
 
     if len(sys.argv) > 1:
         args = parser.parse_args()
         args.out_fold = Path(args.out_fold)
     else:
-        # Etkileşimli örnek (kendi yollarını buraya yaz):
         args = argparse.Namespace(
-            path_to_features=(
-            
-                
-                "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5/features/HUBERT_LARGE_L8,"
-                "E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5/features/WAVLM_LARGE_L8"
-            ),
-            proto_train=r"E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5//ASVspoof5_protocols/ASVspoof5.train.tsv",
-            proto_dev=r"E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5//ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv",
-            proto_eval=r"E:/akademikcalismalar/POST/DeepFakeAudio/DATASETLER/ASVSPOOF5//ASVspoof5_protocols/ASVspoof5.eval.track_1.tsv",
-            out_fold=Path("./models/asv5_amf_hubert_wavlm_nextdnn_eca_L8"),
+            path_to_features="/Users/dangnguyen/Desktop/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/HUBERT_LARGE_L8,/Users/dangnguyen/Desktop/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/features/WAVLM_LARGE_L8",
+            proto_train="/Users/dangnguyen/Desktop/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/ASVspoof5.train.tsv",
+            proto_dev="/Users/dangnguyen/Desktop/Deepfake-audio-detection-SSLFeatures-NextTDNN/RADAR2026-dev/ASVspoof5.dev.track_1.tsv",
+            out_fold=Path("./models/amf_hubert_wavlm_nextdnn_eca_L8_Light_ASVSpoof5_PLAIN"),
             feat_len=750,
             padding="repeat",
             emb_dim=256,
@@ -508,11 +474,6 @@ if __name__ == "__main__":
             num_workers=4,
             seed=598,
             patience=100,
-            add_loss="ocsoftmax",
-            weight_loss=1.0,
-            r_real=0.9,
-            r_fake=0.2,
-            alpha=20.0,
             continue_training=False,
         )
 
@@ -520,12 +481,9 @@ if __name__ == "__main__":
     setup_seed(args.seed)
 
     args.out_fold = Path(args.out_fold)
-    if not args.continue_training:
-        if args.out_fold.exists():
-            shutil.rmtree(args.out_fold)
-        (args.out_fold / "checkpoint").mkdir(parents=True, exist_ok=True)
-    else:
-        (args.out_fold / "checkpoint").mkdir(parents=True, exist_ok=True)
+    if not args.continue_training and args.out_fold.exists():
+        shutil.rmtree(args.out_fold)
+    (args.out_fold / "checkpoint").mkdir(parents=True, exist_ok=True)
 
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
